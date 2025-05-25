@@ -1,4 +1,6 @@
 import streamlit as st
+import pickle
+import gzip
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -25,7 +27,7 @@ st.subheader("📅 Bike Count Over Time")
 start_date, end_date = st.date_input("Select time range", [df['dteday'].min(), df['dteday'].max()])
 filtered_df = df[(df['dteday'] >= pd.to_datetime(start_date)) & (df['dteday'] <= pd.to_datetime(end_date))]
 
-fig, ax = plt.subplots(figsize=(18, 5))
+fig, ax = plt.subplots(figsize=(9,4))
 sns.lineplot(data=filtered_df, x='datetime', y='cnt', ax=ax)
 ax.set(title="Bike Rentals Over Time")
 st.pyplot(fig)
@@ -34,7 +36,7 @@ st.markdown("""---""")
 st.subheader("🔍 Hourly Bike Usage Patterns")
 
 # WEEKDAY vs WEEKEND
-fig, ax = plt.subplots(figsize=(20,10))
+fig, ax = plt.subplots(figsize=(10,5))
 sns.pointplot(data=df, x='hr', y='cnt', hue='weekday', ax=ax)
 ax.set(title='Count of Bikes During Weekdays vs Weekends (All Users)')
 st.pyplot(fig)
@@ -42,42 +44,42 @@ st.markdown("- Peak usage for registered users is around **8 AM and 5-6 PM** on 
 st.markdown("- Weekends show higher usage during **afternoon hours** (more casual trips).")
 
 # CASUAL USERS
-fig, ax = plt.subplots(figsize=(20,10))
+fig, ax = plt.subplots(figsize=(10,5))
 sns.pointplot(data=df, x='hr', y='casual', hue='weekday', ax=ax)
 ax.set(title='Unregistered Users (Casual) — Hourly by Weekday')
 st.pyplot(fig)
 st.markdown("- Casual users mostly rent bikes in the **afternoons and evenings**, especially on weekends.")
 
 # REGISTERED USERS
-fig, ax = plt.subplots(figsize=(20,10))
+fig, ax = plt.subplots(figsize=(10,5))
 sns.pointplot(data=df, x='hr', y='registered', hue='weekday', ax=ax)
 ax.set(title='Registered Users — Hourly by Weekday')
 st.pyplot(fig)
 st.markdown("- Registered users dominate during **rush hours** on weekdays. Typical commuting behavior.")
 
 # WEATHER EFFECT
-fig, ax = plt.subplots(figsize=(20,10))
+fig, ax = plt.subplots(figsize=(10,5))
 sns.pointplot(data=df, x='hr', y='cnt', hue='weathersit', ax=ax)
 ax.set(title='Bike Count by Hour and Weather Condition')
 st.pyplot(fig)
 st.markdown("- Clear weather (1) has the highest counts. Usage drops significantly in bad weather (3 and 4).")
 
 # SEASONAL EFFECT
-fig, ax = plt.subplots(figsize=(20,10))
+fig, ax = plt.subplots(figsize=(10,5))
 sns.pointplot(data=df, x='hr', y='cnt', hue='season', ax=ax)
 ax.set(title='Bike Count by Hour and Season')
 st.pyplot(fig)
 st.markdown("- Summer and fall have higher usage throughout the day. Winter shows reduced activity.")
 
 # MONTHLY USAGE
-fig, ax = plt.subplots(figsize=(20,10))
+fig, ax = plt.subplots(figsize=(10,5))
 sns.barplot(data=df, x='mnth', y='cnt', ax=ax)
 ax.set(title='Monthly Bike Rental Count')
 st.pyplot(fig)
 st.markdown("- Usage rises from spring, peaks in **summer/fall**, and drops in **winter**.")
 
 # WEEKDAY USAGE
-fig, ax = plt.subplots(figsize=(20,10))
+fig, ax = plt.subplots(figsize=(10,5))
 sns.barplot(data=df, x='weekday', y='cnt', ax=ax)
 ax.set(title='Average Bike Rentals per Weekday')
 st.pyplot(fig)
@@ -96,30 +98,30 @@ st.markdown("- High humidity tends to **slightly lower** the count — possibly 
 st.markdown("---")
 st.header("🔮 Predict Next Week's Bike Rentals")
 
-# Features for modeling
+# Load trained model
+with gzip.open("./code/bike_model_compressed.pkl.gz", "rb") as f:
+    model = pickle.load(f)
+
+# Use model for prediction
 features = ['hr', 'weekday', 'workingday', 'temp', 'atemp', 'hum', 'windspeed', 'season', 'mnth']
 target = 'cnt'
 
 X = df[features]
 y = df[target]
 
-# Split for validation (not for future prediction, just to show model performance)
+# Model performance (optional)
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
+
 X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
-
-# Train a model
-model = RandomForestRegressor(n_estimators=100, random_state=42)
-model.fit(X_train, y_train)
-
-# Evaluate on validation set
 val_preds = model.predict(X_val)
 rmse = np.sqrt(mean_squared_error(y_val, val_preds))
 st.write(f"Model RMSE on validation set: **{rmse:.2f}**")
 
-# Generate next 168 hours (7 days) of synthetic features
+# Future prediction (same as before)
 import datetime as dt
-
 last_date = df['datetime'].max()
-future_hours = pd.date_range(start=last_date + pd.Timedelta(hours=1), periods=168, freq='H')
+future_hours = pd.date_range(start=last_date + pd.Timedelta(hours=1), periods=168, freq='h')
 
 future_df = pd.DataFrame({
     'datetime': future_hours,
@@ -127,25 +129,15 @@ future_df = pd.DataFrame({
     'weekday': future_hours.weekday,
     'workingday': [1 if d.weekday() < 5 and d not in [5,6] else 0 for d in future_hours],
     'mnth': future_hours.month,
-    'season': ((future_hours.month % 12 + 3) // 3),  # crude way to get season
+    'season': ((future_hours.month % 12 + 3) // 3),
 })
-
-# Simulate weather features based on averages
 future_df['temp'] = df['temp'].mean()
 future_df['atemp'] = df['atemp'].mean()
 future_df['hum'] = df['hum'].mean()
 future_df['windspeed'] = df['windspeed'].mean()
 
-# Predict
 future_preds = model.predict(future_df[features])
 future_df['cnt_predicted'] = future_preds
-
-# Plot
-st.subheader("📆 Predicted Bike Rentals for Next 7 Days")
-fig, ax = plt.subplots(figsize=(18,5))
-sns.lineplot(data=future_df, x='datetime', y='cnt_predicted', ax=ax)
-ax.set(title="Predicted Rentals (Hourly) for the Upcoming Week")
-st.pyplot(fig)
 
 st.subheader("📆 Last 2 Weeks and Next 7 Days: Bike Rental Forecast")
 
@@ -164,7 +156,7 @@ combined_df = pd.concat([
 ], axis=1).reset_index()
 
 # Plot both
-fig, ax = plt.subplots(figsize=(18, 5))
+fig, ax = plt.subplots(figsize=(9,4))
 sns.lineplot(data=combined_df, x='datetime', y='cnt_actual', label='Actual (Last 2 Weeks)', color='blue')
 sns.lineplot(data=combined_df, x='datetime', y='cnt_predicted', label='Predicted (Next 7 Days)', color='orange')
 ax.set(title="Bike Rentals: Last 2 Weeks (Actual) and Next 7 Days (Predicted)")
