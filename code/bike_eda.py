@@ -13,7 +13,7 @@ st.title("🚲 UCI Bike Sharing Dataset EDA")
 # Load dataset
 @st.cache_data
 def load_data():
-    df = pd.read_csv("../data/hour.csv")
+    df = pd.read_csv("./data/hour.csv")
     df['dteday'] = pd.to_datetime(df['dteday'])
     df['datetime'] = df['dteday'] + pd.to_timedelta(df['hr'], unit='h')
     return df
